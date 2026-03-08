@@ -137,3 +137,15 @@ resource "aws_security_group" "allow_all_outbound" {
 
   tags = { Name = "${var.project_name}-sg-outbound" }
 }
+
+resource "aws_flow_log" "vpc" {
+  vpc_id               = aws_vpc.main.id
+  traffic_type         = "ALL"
+  log_destination_type = "cloud-watch-logs"
+  log_destination      = aws_cloudwatch_log_group.vpc_logs.arn
+}
+
+resource "aws_cloudwatch_log_group" "vpc_logs" {
+  name              = "/vpc/${var.project_name}-${var.environment}"
+  retention_in_days = 30
+}
