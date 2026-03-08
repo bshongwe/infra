@@ -29,3 +29,21 @@ module "vpc" {
     Repository      = "infra"
   }
 }
+
+module "eks" {
+  source = "../../modules/eks"
+
+  project_name    = "cloud-risk-platform"
+  environment     = "dev"
+  aws_region      = var.aws_region
+
+  kubernetes_version = "1.31"
+
+  min_nodes_general     = 1
+  max_nodes_general     = 5
+  desired_nodes_general = 1
+}
+
+# Outputs for next phases (e.g., kubeconfig generation)
+output "eks_cluster_endpoint" { value = module.eks.cluster_endpoint }
+output "eks_oidc_provider_arn" { value = module.eks.oidc_provider_arn }
