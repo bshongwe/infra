@@ -1,24 +1,43 @@
 # Data Sources
 data "aws_region" "current" {}
 
+# Local values for consistent tagging
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "Terraform"
+      Module      = "vpc"
+    }
+  )
+}
+
 # VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = {
-    Name = "${var.project_name}-vpc-${var.environment}"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-vpc-${var.environment}"
+    }
+  )
 }
 
 # Internet Gateway (for public subnets)
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
-  tags = {
-    Name = "${var.project_name}-igw"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-igw"
+    }
+  )
 }
 
 # Public Subnets
@@ -29,10 +48,14 @@ resource "aws_subnet" "public" {
   availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
 
-  tags = {
-    Name                                        = "${var.project_name}-public-${var.azs[count.index]}"
-    "kubernetes.io/role/elb"                    = "1"  # For future EKS ALB
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name                     = "${var.project_name}-public-${var.azs[count.index]}"
+      "kubernetes.io/role/elb" = "1"  # For future EKS ALB
+      Tier                     = "Public"
+    }
+  )
 }
 
 # Private App Subnets (for EKS nodes, services)
@@ -42,10 +65,14 @@ resource "aws_subnet" "private_app" {
   cidr_block        = var.private_app_subnets[count.index]
   availability_zone = var.azs[count.index]
 
-  tags = {
-    Name                                        = "${var.project_name}-private-app-${var.azs[count.index]}"
-    "kubernetes.io/role/internal-elb"           = "1"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name                              = "${var.project_name}-private-app-${var.azs[count.index]}"
+      "kubernetes.io/role/internal-elb" = "1"
+      Tier                              = "Private-App"
+    }
+  )
 }
 
 # Data Subnets (isolated for RDS, Redis, etc. — no direct internet)
@@ -55,9 +82,13 @@ resource "aws_subnet" "data" {
   cidr_block        = var.data_subnets[count.index]
   availability_zone = var.azs[count.index]
 
-  tags = {
-    Name = "${var.project_name}-data-${var.azs[count.index]}"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-data-${var.azs[count.index]}"
+      Tier = "Data"
+    }
+  )
 }
 
 # NAT Gateways + EIPs (one per AZ for HA)
@@ -65,9 +96,12 @@ resource "aws_eip" "nat" {
   count = var.enable_nat_gateway ? length(var.azs) : 0
   domain = "vpc"
 
-  tags = {
-    Name = "${var.project_name}-nat-eip-${count.index}"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-nat-eip-${count.index}"
+    }
+  )
 }
 
 resource "aws_nat_gateway" "main" {
@@ -75,9 +109,12 @@ resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id  # NAT in public subnet
 
-  tags = {
-    Name = "${var.project_name}-nat-${var.azs[count.index]}"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-nat-${var.azs[count.index]}"
+    }
+  )
 
   depends_on = [aws_internet_gateway.main]
 }
@@ -91,7 +128,13 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.main.id
   }
 
-  tags = { Name = "${var.project_name}-public-rt" }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-public-rt"
+      Tier = "Public"
+    }
+  )
 }
 
 resource "aws_route_table_association" "public" {
@@ -110,7 +153,13 @@ resource "aws_route_table" "private" {
     nat_gateway_id = var.enable_nat_gateway ? aws_nat_gateway.main[count.index].id : null
   }
 
-  tags = { Name = "${var.project_name}-private-rt-${var.azs[count.index]}" }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-private-rt-${var.azs[count.index]}"
+      Tier = "Private"
+    }
+  )
 }
 
 resource "aws_route_table_association" "private_app" {
@@ -138,7 +187,12 @@ resource "aws_security_group" "allow_all_outbound" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${var.project_name}-sg-outbound" }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-sg-outbound"
+    }
+  )
 }
 
 resource "aws_flow_log" "vpc" {
@@ -146,11 +200,25 @@ resource "aws_flow_log" "vpc" {
   traffic_type         = "ALL"
   log_destination_type = "cloud-watch-logs"
   log_destination      = aws_cloudwatch_log_group.vpc_logs.arn
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-vpc-flow-log"
+    }
+  )
 }
 
 resource "aws_cloudwatch_log_group" "vpc_logs" {
   name              = "/vpc/${var.project_name}-${var.environment}"
   retention_in_days = 30
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-vpc-logs"
+    }
+  )
 }
 
 # Security Group for VPC Endpoints
@@ -175,9 +243,12 @@ resource "aws_security_group" "vpc_endpoints" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.project_name}-vpc-endpoints-sg"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-vpc-endpoints-sg"
+    }
+  )
 }
 
 # S3 Gateway Endpoint (no charge)
@@ -190,9 +261,14 @@ resource "aws_vpc_endpoint" "s3" {
     aws_route_table.private[*].id
   )
 
-  tags = {
-    Name = "${var.project_name}-s3-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-s3-endpoint"
+      Service      = "S3"
+      EndpointType = "Gateway"
+    }
+  )
 }
 
 # DynamoDB Gateway Endpoint (no charge)
@@ -205,9 +281,14 @@ resource "aws_vpc_endpoint" "dynamodb" {
     aws_route_table.private[*].id
   )
 
-  tags = {
-    Name = "${var.project_name}-dynamodb-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-dynamodb-endpoint"
+      Service      = "DynamoDB"
+      EndpointType = "Gateway"
+    }
+  )
 }
 
 # ECR API Interface Endpoint
@@ -219,9 +300,14 @@ resource "aws_vpc_endpoint" "ecr_api" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
-  tags = {
-    Name = "${var.project_name}-ecr-api-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-ecr-api-endpoint"
+      Service      = "ECR-API"
+      EndpointType = "Interface"
+    }
+  )
 }
 
 # ECR DKR Interface Endpoint (for Docker image pulls)
@@ -233,9 +319,14 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
-  tags = {
-    Name = "${var.project_name}-ecr-dkr-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-ecr-dkr-endpoint"
+      Service      = "ECR-DKR"
+      EndpointType = "Interface"
+    }
+  )
 }
 
 # CloudWatch Logs Interface Endpoint
@@ -247,9 +338,14 @@ resource "aws_vpc_endpoint" "logs" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
-  tags = {
-    Name = "${var.project_name}-logs-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-logs-endpoint"
+      Service      = "CloudWatch-Logs"
+      EndpointType = "Interface"
+    }
+  )
 }
 
 # CloudWatch Monitoring Interface Endpoint
@@ -261,9 +357,14 @@ resource "aws_vpc_endpoint" "monitoring" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
-  tags = {
-    Name = "${var.project_name}-monitoring-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-monitoring-endpoint"
+      Service      = "CloudWatch-Monitoring"
+      EndpointType = "Interface"
+    }
+  )
 }
 
 # STS Interface Endpoint
@@ -275,7 +376,12 @@ resource "aws_vpc_endpoint" "sts" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
-  tags = {
-    Name = "${var.project_name}-sts-endpoint"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name         = "${var.project_name}-sts-endpoint"
+      Service      = "STS"
+      EndpointType = "Interface"
+    }
+  )
 }
