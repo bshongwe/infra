@@ -47,3 +47,13 @@ module "eks" {
 # Outputs for next phases (e.g., kubeconfig generation)
 output "eks_cluster_endpoint" { value = module.eks.cluster_endpoint }
 output "eks_oidc_provider_arn" { value = module.eks.oidc_provider_arn }
+
+module "msk" {
+  source = "../../modules/msk"
+
+  project_name           = "cloud-risk-platform"
+  environment            = "dev"
+  aws_region             = var.aws_region
+  azs                    = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  broker_nodes_per_az    = 1  # 3 total brokers for dev cost savings
+}
