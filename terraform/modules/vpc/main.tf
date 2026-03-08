@@ -168,10 +168,28 @@ resource "aws_route_table_association" "private_app" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
+# Separate Route Tables for Data Subnets (NO internet access)
+resource "aws_route_table" "data" {
+  count = length(var.azs)
+
+  vpc_id = aws_vpc.main.id
+
+  # No default route - data subnets cannot reach internet
+  # They can only communicate within VPC and via VPC endpoints
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-data-rt-${var.azs[count.index]}"
+      Tier = "Data"
+    }
+  )
+}
+
 resource "aws_route_table_association" "data" {
   count          = length(aws_subnet.data)
   subnet_id      = aws_subnet.data[count.index].id
-  route_table_id = aws_route_table.private[count.index].id
+  route_table_id = aws_route_table.data[count.index].id
 }
 
 # Baseline Security Groups (expand later)
@@ -258,7 +276,8 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_endpoint_type = "Gateway"
   route_table_ids = concat(
     [aws_route_table.public.id],
-    aws_route_table.private[*].id
+    aws_route_table.private[*].id,
+    aws_route_table.data[*].id
   )
 
   tags = merge(
@@ -278,7 +297,8 @@ resource "aws_vpc_endpoint" "dynamodb" {
   vpc_endpoint_type = "Gateway"
   route_table_ids = concat(
     [aws_route_table.public.id],
-    aws_route_table.private[*].id
+    aws_route_table.private[*].id,
+    aws_route_table.data[*].id
   )
 
   tags = merge(
