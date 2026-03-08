@@ -15,4 +15,17 @@ module "vpc" {
   data_subnets        = ["10.0.21.0/24", "10.0.22.0/24", "10.0.23.0/24"]
 
   enable_nat_gateway = false  # Save costs in dev; set true in prod
+
+  # Enterprise standard tags
+  tags = {
+    Owner           = "platform-team"
+    CostCenter      = "engineering"
+    BusinessUnit    = "risk-management"
+    DataClass       = "confidential"
+    Compliance      = "sox,pci"
+    BackupPolicy    = "daily"
+    MaintenanceWindow = "sun:03:00-sun:05:00"
+    CreatedBy       = "terraform"
+    Repository      = "infra"
+  }
 }
