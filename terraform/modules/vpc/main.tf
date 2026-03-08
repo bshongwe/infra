@@ -1,3 +1,6 @@
+# Data Sources
+data "aws_region" "current" {}
+
 # VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -148,4 +151,131 @@ resource "aws_flow_log" "vpc" {
 resource "aws_cloudwatch_log_group" "vpc_logs" {
   name              = "/vpc/${var.project_name}-${var.environment}"
   retention_in_days = 30
+}
+
+# Security Group for VPC Endpoints
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.project_name}-vpc-endpoints-sg"
+  description = "Security group for VPC endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTPS from VPC"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-vpc-endpoints-sg"
+  }
+}
+
+# S3 Gateway Endpoint (no charge)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.${data.aws_region.current.name}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids = concat(
+    [aws_route_table.public.id],
+    aws_route_table.private[*].id
+  )
+
+  tags = {
+    Name = "${var.project_name}-s3-endpoint"
+  }
+}
+
+# DynamoDB Gateway Endpoint (no charge)
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.${data.aws_region.current.name}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids = concat(
+    [aws_route_table.public.id],
+    aws_route_table.private[*].id
+  )
+
+  tags = {
+    Name = "${var.project_name}-dynamodb-endpoint"
+  }
+}
+
+# ECR API Interface Endpoint
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private_app[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ecr-api-endpoint"
+  }
+}
+
+# ECR DKR Interface Endpoint (for Docker image pulls)
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private_app[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ecr-dkr-endpoint"
+  }
+}
+
+# CloudWatch Logs Interface Endpoint
+resource "aws_vpc_endpoint" "logs" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private_app[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-logs-endpoint"
+  }
+}
+
+# CloudWatch Monitoring Interface Endpoint
+resource "aws_vpc_endpoint" "monitoring" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.monitoring"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private_app[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-monitoring-endpoint"
+  }
+}
+
+# STS Interface Endpoint
+resource "aws_vpc_endpoint" "sts" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.sts"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private_app[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-sts-endpoint"
+  }
 }
