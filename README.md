@@ -590,13 +590,11 @@ This project demonstrates **principal-level platform engineering practices**:
 
 Built to showcase the complete infrastructure foundation for a modern, cloud-native, production-ready platform.
 
-**Current Progress:**
-- Phase 1: ✅ 100% Complete
-- Phase 2: 🔄 85% Complete
-- Overall: 🔄 ~43% Complete (2 of 6 phases)
 
 ---
 
-**Last Updated:** March 8, 2026  
-**Version:** 2.1.0  
-**Status:** Phase 2 In Progress (85% Complete) 🔄
+# Reference Repos
+
+1. **Infra:** https://github.com/bshongwe/infra
+2. **Fraud Detection ML System:** https://github.com/bshongwe/ml
+3. **Services:** https://github.com/bshongwe/services
